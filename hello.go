@@ -47,8 +47,8 @@ type Owner struct {
 
 // Repo struct containing data about repo
 type Repo struct {
-	Project      string `json:"full_name"`
-	Name         string `json:"name"`
+	Project      string `json:"name"`
+	Name         string `json:"full_name"`
 	Owner        Owner  `json:"owner"`
 	Contributors string `json:"contributors_url"`
 	Languages    string `json:"languages_url"`
@@ -102,7 +102,7 @@ func handlerRepo(w http.ResponseWriter, r *http.Request) {
 	for k := range langs {
 		data.Language = append(data.Language, k)
 	}
-	data.Project = "github.com/" + string(repo1.Project)
+	data.Project = string(repo1.Project)
 	data.Owner = repo1.Owner.Login
 	data.Committer = cons.Users[0].Login
 	data.Commits = cons.Users[0].Contributions
