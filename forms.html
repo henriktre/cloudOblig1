@@ -1,0 +1,12 @@
+{{if .Success}}
+	<h1>Thanks for your message!</h1>
+{{else}}
+	<h1>Henriks Repo Viewer</h1>
+	<form method="POST">
+		<label>Username:</label><br />
+		<input type="text" name="username"><br />
+		<label>Reponame:</label><br />
+		<input type="text" name="reponame"><br />
+		<input type="submit">
+	</form>
+{{end}}

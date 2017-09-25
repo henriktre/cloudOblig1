@@ -1,0 +1,179 @@
+package hello
+
+import (
+	"encoding/json"
+	"fmt"
+	"html/template"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/gorilla/mux"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/urlfetch"
+)
+
+//UserInfo contains the input from the user
+type UserInfo struct {
+	Username string
+	Reponame string
+}
+
+// User containing data about the user
+type User struct {
+	Login         string `json:"login"`
+	Contributions int    `json:"contributions"`
+}
+
+// Contributors data about contributions
+type Contributors struct {
+	Users []User
+}
+
+// Owner containing data about the owner
+type Owner struct {
+	Login string `json:"login"`
+}
+
+// Repo struct containing data about repo
+type Repo struct {
+	Name         string `json:"name"`
+	Owner        Owner  `json:"owner"`
+	Contributors string `json:"contributors_url"`
+	Languages    string `json:"languages_url"`
+}
+
+func init() {
+	r := mux.NewRouter()
+	r.HandleFunc("/", handler)
+	r.HandleFunc("/repo/{username}/{repo}", handlerRepo)
+	r.HandleFunc("/name", handlerName)
+	r.HandleFunc("/sjekk", handlerSjekk)
+	http.Handle("/", r)
+}
+func handlerSjekk(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get("https://api.github.com/rate_limit")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	body, readErr := ioutil.ReadAll(resp.Body)
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	fmt.Fprint(w, string(body))
+
+}
+
+func handlerName(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	name := parts[2]
+	fmt.Fprintln(w, parts, name)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	tmpl := template.Must(template.ParseFiles("forms.html"))
+
+	if r.Method != http.MethodPost {
+		tmpl.Execute(w, nil)
+		return
+	}
+
+	details := UserInfo{
+		Username: r.FormValue("username" + "/"),
+		Reponame: r.FormValue("reponame" + "/"),
+	}
+	fmt.Fprintln(w, details)
+
+	//handlerRepo(w, r, details)
+}
+
+func handlerRepo(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get("https://api.github.com/repos/" + vars["username"] + "/" + vars["reponame"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "HTTP GET returned status %v", resp.Status)
+
+	repo1 := Repo{}
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+	jsonError := json.Unmarshal(body, &repo1)
+
+	if readErr != nil || jsonError != nil {
+		log.Fatal(readErr)
+	}
+
+	cons := getContributors(w, r, repo1)
+	langs := getLanguages(w, r, repo1)
+
+	fmt.Fprintln(w, " ", repo1.Name)
+	fmt.Fprintln(w, " ", repo1.Owner.Login)
+	fmt.Fprintln(w, " ", cons.Users)
+	fmt.Fprintln(w, " ", langs)
+
+}
+
+func getContributors(w http.ResponseWriter, r *http.Request, repo1 Repo) Contributors {
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get(repo1.Contributors)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	// fmt.Fprintf(w, "HTTP GET returned status %v", resp.Status)
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	cons := Contributors{}
+
+	jsonError := json.Unmarshal(body, &cons.Users)
+
+	if jsonError != nil {
+		log.Fatal(jsonError)
+	}
+
+	return cons
+}
+
+func getLanguages(w http.ResponseWriter, r *http.Request, repo1 Repo) interface{} {
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get(repo1.Languages)
+
+	if err != nil {
+		var error interface{}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		error = err.Error()
+		return error
+	}
+
+	// fmt.Fprintf(w, "HTTP GET returned status %v", resp.Status)
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+
+	var langs interface{}
+
+	jsonError := json.Unmarshal(body, &langs)
+
+	if readErr != nil || jsonError != nil {
+		log.Fatal(readErr)
+	}
+
+	return langs
+}

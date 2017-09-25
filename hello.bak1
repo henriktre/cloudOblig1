@@ -1,0 +1,138 @@
+package hello
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/urlfetch"
+)
+
+type User struct {
+	Login         string `json:"login"`
+	Contributions string `json:"contributions"`
+}
+
+type Contributors struct {
+	Users []User
+}
+
+type Owner struct {
+	Login string `json:"login"`
+}
+
+//Repo comment explaining shit
+type Repo struct {
+	Name         string `json:"name"`
+	Owner        Owner  `json:"owner"`
+	Contributors string `json:"contributors_url"`
+	Languages    string `json:"languages_url"`
+}
+
+func init() {
+	http.HandleFunc("/", handler)
+	http.HandleFunc("/repo", handlerRepo)
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello, world!")
+}
+
+func handlerRepo(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get("https://api.github.com/repos/git/git")
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintf(w, "HTTP GET returned status %v", resp.Status, "\n")
+
+	repo1 := Repo{}
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+	jsonErr := json.Unmarshal(body, &repo1)
+
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	con := getContributors(w, r, repo1)
+	langs := getLanguages(w, r, repo1)
+
+	fmt.Fprintln(w, " ", repo1.Name)
+	fmt.Fprintln(w, " ", repo1.Owner.Login)
+	fmt.Fprintln(w, " ", con.Users)
+	fmt.Fprintln(w, " ", langs)
+
+}
+
+func getContributors(w http.ResponseWriter, r *http.Request, repo1 Repo) Contributors {
+
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get(repo1.Contributors)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	con := Contributors{}
+
+	jsonErr := json.Unmarshal(body, &con.Users)
+
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	return con
+}
+
+func getLanguages(w http.ResponseWriter, r *http.Request, repo1 Repo) interface{} {
+	ctx := appengine.NewContext(r)
+	client := urlfetch.Client(ctx)
+	resp, err := client.Get(repo1.Languages)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	body, readErr := ioutil.ReadAll(resp.Body)
+
+	var langs interface{}
+
+	jsonErr := json.Unmarshal(body, &langs)
+
+	if readErr != nil {
+		log.Fatal(readErr)
+	}
+
+	if jsonErr != nil {
+		log.Fatal(jsonErr)
+	}
+
+	return langs
+}
+
+/*
+  relevant api Requests:
+  repo: https://api.github.com/repos/USER/REPO/
+  owner: lies in the repo json under /owner/login
+  languages: https://api.github.com/repos/USER/REPO/languages
+  contributors: https://api.github.com/repos/USER/REPO/contributors
+*/
